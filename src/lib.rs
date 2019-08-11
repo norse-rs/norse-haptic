@@ -9,7 +9,7 @@ mod physical_device;
 pub use crate::{action::*, error::*, instance::*, intern::*, physical_device::*};
 
 use handle::Handle;
-use intern::Path;
+pub use intern::Path;
 use std::collections::HashMap;
 
 use crate::device::*;
@@ -25,12 +25,18 @@ type ProfilePath = Path;
 type SourcePath = Path;
 pub type Subpath = Path;
 
+// e.g /user/hand/left
+type UserPath = Path;
+
+// e.g /input/mouse/left/click
+type InputPath = Path;
+
 impl Instance {
     pub fn create_system(&self) -> Result<System> {
         Ok(System)
     }
 
-    pub unsafe fn create_session(&self, system: &System) -> Result<Session> {
+    pub unsafe fn create_session(&mut self, system: &System) -> Result<Session> {
         let instance = GetModuleHandleW(ptr::null());
         let hwnd = CreateWindowExW(
             0,
@@ -67,14 +73,20 @@ impl Instance {
             mem::size_of::<RAWINPUTDEVICE>() as _,
         );
 
+        let user_paths = UserPaths {
+            mouse: self.interner.intern("/user/mouse"),
+            keyboard: self.interner.intern("/user/keyboard"),
+        };
+
         let mut devices = HashMap::new();
-        devices.insert(DeviceTy::Keyboard, Device::new_keyboard());
-        devices.insert(DeviceTy::Mouse, Device::new_mouse());
+        devices.insert(user_paths.keyboard, Device::new_keyboard());
+        devices.insert(user_paths.mouse, Device::new_mouse(&mut self.interner));
 
         Ok(Session {
             hwnd,
+            user_paths,
             devices,
-            active_profile: self.desktop_profile,
+            active_profile: self.profiles.desktop,
         })
     }
 }
@@ -85,14 +97,16 @@ pub enum FormFactor {
 
 pub enum Event {}
 
-struct Profiles {
-    norse: ProfilePath,
-}
-
 pub struct System;
+
+pub(crate) struct UserPaths {
+    pub mouse: UserPath,
+    pub keyboard: UserPath,
+}
 
 pub struct Session {
     hwnd: HWND,
-    devices: HashMap<DeviceTy, Device>,
+    user_paths: UserPaths,
+    devices: HashMap<UserPath, Device>,
     active_profile: ProfilePath,
 }

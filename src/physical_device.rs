@@ -1,12 +1,10 @@
 use crate::{error::Result, instance::Instance};
-use std::{ptr, mem};
+use std::{mem, ptr};
 use winapi::um::winuser::*;
 
 pub type PhysicalDevice = RAWINPUTDEVICELIST;
 
-pub struct PhysicalDeviceGroupProperties {
-
-}
+pub struct PhysicalDeviceGroupProperties {}
 
 impl Instance {
     pub unsafe fn enumerate_physical_devices(&self) -> Result<Vec<PhysicalDevice>> {
@@ -28,7 +26,9 @@ impl Instance {
         Ok(devices)
     }
 
-    pub unsafe fn enumerate_physical_device_groups(&self) -> Result<Vec<PhysicalDeviceGroupProperties>> {
+    pub unsafe fn enumerate_physical_device_groups(
+        &self,
+    ) -> Result<Vec<PhysicalDeviceGroupProperties>> {
         unimplemented!()
     }
 }

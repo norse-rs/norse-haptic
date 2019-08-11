@@ -1,5 +1,7 @@
 use crate::device::*;
-use crate::{Handle, Instance, ProfilePath, Result, Session, SourcePath, Subpath};
+use crate::{
+    Handle, InputPath, Instance, ProfilePath, Result, Session, SourcePath, Subpath, UserPath,
+};
 use std::collections::HashMap;
 use std::mem;
 use winapi::um::winuser::*;
@@ -38,19 +40,53 @@ pub enum ActionType {
 }
 
 pub struct Action {
-    values: HashMap<SourcePath, ActionState>,
+    values: HashMap<Subpath, ActionState>,
 
     // map profiles to source paths
-    sources: HashMap<ProfilePath, Vec<SourcePath>>,
+    sources: HashMap<ProfilePath, Vec<(UserPath, InputPath)>>,
 }
 
-pub struct ActionStateBoolean {}
+#[derive(Debug)]
+pub struct ActionStateBoolean {
+    pub current_state: bool,
+}
 
-pub struct ActionStateFloat {}
+impl ActionStateBoolean {
+    fn new() -> Self {
+        ActionStateBoolean {
+            current_state: false,
+        }
+    }
+
+    fn apply_value(&mut self, value: ActionValue) {
+        match value {
+            ActionValue::Boolean(v) => {
+                // TODO
+                self.current_state = v;
+            }
+            ActionValue::Float(v) => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ActionStateFloat {
+    pub current_state: f32,
+}
 
 impl ActionStateFloat {
     fn new() -> Self {
-        ActionStateFloat {}
+        ActionStateFloat { current_state: 0.0 }
+    }
+
+    fn apply_value(&mut self, value: ActionValue) {
+        match value {
+            ActionValue::Boolean(v) => unimplemented!(),
+            ActionValue::Float(v) => {
+                // TODO: exact rules
+                self.current_state = v;
+            }
+        }
     }
 }
 
@@ -84,11 +120,11 @@ impl Instance {
     }
 
     pub unsafe fn suggest_interaction_profile_bindings(
-        &self,
+        &mut self,
         interaction_profile: ProfilePath,
         bindings: &[ActionSuggestedBinding],
     ) {
-        if interaction_profile != self.desktop_profile {
+        if interaction_profile != self.profiles.desktop {
             // ignore, not supported
             return;
         }
@@ -99,7 +135,15 @@ impl Instance {
                 .sources
                 .entry(interaction_profile)
                 .or_insert(Vec::new());
-            sources.push(binding.binding);
+            let (user, input) = {
+                let path_str = self.interner.untern(binding.binding);
+                let mut split = path_str.split("/input/");
+                let user = split.next().unwrap();
+                let input = split.next().unwrap();
+
+                (self.interner.intern(user), self.interner.intern(input))
+            };
+            sources.push((user, input));
         }
     }
 }
@@ -124,26 +168,29 @@ impl Session {
     pub unsafe fn attach_action_sets(&mut self, sets: &[Handle<ActionSet>]) {}
 
     pub unsafe fn sync_actions(&mut self, sets: &[Handle<ActionSet>]) {
+        // reset devices
+        for device in self.devices.values_mut() {
+            device.reset();
+        }
+
+        // apply updates
         let mut msg = mem::uninitialized();
         while PeekMessageW(&mut msg, self.hwnd, WM_INPUT, WM_INPUT, PM_REMOVE) != 0 {
             let input = map_raw_input(msg.lParam as _);
             match input.header.dwType {
                 RIM_TYPEMOUSE => {
                     if let Some(Device {
-                        state:
-                            DeviceState::Mouse {
-                                ref mut delta_x,
-                                ref mut delta_y,
-                            },
-                    }) = self.devices.get_mut(&DeviceTy::Mouse)
+                        state: DeviceState::Mouse(ref mut mouse),
+                        ..
+                    }) = self.devices.get_mut(&self.user_paths.mouse)
                     {
-                        let mouse = input.data.mouse();
-                        *delta_x += mouse.lLastX;
-                        *delta_y += mouse.lLastY;
+                        let raw_mouse = input.data.mouse();
+                        mouse.delta_x += raw_mouse.lLastX;
+                        mouse.delta_y += raw_mouse.lLastY;
                     }
                 }
                 RIM_TYPEKEYBOARD => {
-                    if let Some(device) = self.devices.get_mut(&DeviceTy::Keyboard) {
+                    if let Some(device) = self.devices.get_mut(&self.user_paths.keyboard) {
                         let keyboard = input.data.keyboard();
                         // TODO
                     }
@@ -160,7 +207,14 @@ impl Session {
     ) -> Result<ActionStateFloat> {
         let mut state = ActionStateFloat::new();
         let sources = &action.sources[&self.active_profile];
-        Ok(ActionStateFloat {})
+        for &(user, input) in sources {
+            if let Some(device) = self.devices.get(&user) {
+                if let Some(mapping) = device.mappings.get(&input) {
+                    state.apply_value(mapping(&device.state));
+                }
+            }
+        }
+        Ok(state)
     }
 
     pub unsafe fn get_action_state_boolean(
@@ -168,6 +222,15 @@ impl Session {
         action: Handle<Action>,
         subpath: Subpath,
     ) -> Result<ActionStateBoolean> {
-        Ok(ActionStateBoolean {})
+        let mut state = ActionStateBoolean::new();
+        let sources = &action.sources[&self.active_profile];
+        for &(user, input) in sources {
+            if let Some(device) = self.devices.get(&user) {
+                if let Some(mapping) = device.mappings.get(&input) {
+                    state.apply_value(mapping(&device.state));
+                }
+            }
+        }
+        Ok(state)
     }
 }

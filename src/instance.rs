@@ -1,15 +1,18 @@
-
-use crate::{NORSE_DESKTOP_INTERACTION_PROFILE_NAME, error::Result, intern::{Interner, Path}, physical_device::PhysicalDevice};
-use std::mem;
+use crate::{
+    error::Result,
+    intern::{Interner, Path},
+    ProfilePath, NORSE_DESKTOP_INTERACTION_PROFILE_NAME,
+};
 use std::ffi::OsStr;
-use winapi::um::winuser::{RegisterClassExW, DefWindowProcW, WNDCLASSEXW};
+use std::mem;
 use std::os::windows::ffi::OsStrExt;
 use winapi::shared::minwindef::*;
+use winapi::um::winuser::{DefWindowProcW, RegisterClassExW, WNDCLASSEXW};
 
 pub struct Instance {
     pub(crate) class_name: Vec<u16>,
     pub(crate) interner: Interner,
-    pub(crate) desktop_profile: Path,
+    pub(crate) profiles: Profiles,
 }
 
 impl Instance {
@@ -27,16 +30,22 @@ impl Instance {
         RegisterClassExW(&class);
 
         let mut interner = Interner::new();
-        let desktop_profile = interner.intern(NORSE_DESKTOP_INTERACTION_PROFILE_NAME);
+        let profiles = Profiles {
+            desktop: interner.intern(NORSE_DESKTOP_INTERACTION_PROFILE_NAME),
+        };
 
         Ok(Instance {
             class_name,
             interner,
-            desktop_profile,
+            profiles,
         })
     }
 
     pub fn string_to_path(&mut self, string: &str) -> Path {
         self.interner.intern(string)
     }
+}
+
+pub(crate) struct Profiles {
+    pub desktop: ProfilePath,
 }

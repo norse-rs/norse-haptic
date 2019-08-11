@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
 
         let game_set = instance.create_action_set("game")?;
         let forward = game_set.create_action("forward", hpt::ActionType::BooleanInput, &[])?;
-        let forward_path = instance.string_to_path("/user/mouse/input/left/click");
+        let forward_path = instance.string_to_path("/user/mouse/input/delta_x/scalar");
 
         let profile_path = instance.string_to_path("/interaction_profiles/norse/desktop");
         instance.suggest_interaction_profile_bindings(
@@ -24,8 +24,12 @@ fn main() -> Result<(), Box<std::error::Error>> {
 
         session.attach_action_sets(&[game_set]);
 
+        let mut dx = 0.0;
+
         loop {
             session.sync_actions(&[game_set]);
+            let fwd_state = session.get_action_state_float(forward, hpt::Path::NULL)?;
+            dx += fwd_state.current_state;
         }
     }
     Ok(())

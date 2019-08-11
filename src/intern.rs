@@ -34,4 +34,8 @@ impl Interner {
             }
         }
     }
+
+    pub fn untern(&self, path: Path) -> Arc<String> {
+        self.path_to_str[path.0 as usize - 1].clone()
+    }
 }
